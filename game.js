@@ -156,33 +156,52 @@ function updatePaddle() {
     paddle.x = clamp(paddle.x, 0, canvas.width - paddle.width);
 }
 
-function resetBall() {
-    ball.x = canvas.width / 2;
-    ball.y = canvas.height / 2;
-    ball.velocityX = 5;
-    ball.velocityY = 5;
+// Check if circle (ball) collides with rectangle (paddle or block)
+function circleRectCollision(circle, rect) {
+    // Find the closest point on the rectangle to the circle's center
+    const closestX = clamp(circle.x, rect.x, rect.x + rect.width);
+    const closestY = clamp(circle.y, rect.y, rect.y + rect.height);
+
+    // Calculate the distance between the circle's center and the closest point
+    const dx = circle.x - closestX;
+    const dy = circle.y - closestY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // If distance is less than radius, there's a collision
+    return distance < circle.radius;
+}
+
+// Determine which side of the rectangle was hit
+function getCollisionSide(circle, rect) {
+    const closestX = clamp(circle.x, rect.x, rect.x + rect.width);
+    const closestY = clamp(circle.y, rect.y, rect.y + rect.height);
+
+    const dx = Math.abs(circle.x - closestX);
+    const dy = Math.abs(circle.y - closestY);
+
+    if (dx > dy) {
+        return 'horizontal'; // Hit left or right side
+    } else {
+        return 'vertical'; // Hit top or bottom side
+    }
 }
 
 function handlePaddleCollision() {
-    const paddleLeft = paddle.x;
-    const paddleRight = paddle.x + paddle.width;
-    const paddleTop = paddle.y;
-    const paddleBottom = paddle.y + paddle.height;
+    if (circleRectCollision(ball, paddle)) {
+        const side = getCollisionSide(ball, paddle);
 
-    const hitPaddle =
-        ball.y + ball.radius >= paddleTop &&
-        ball.y - ball.radius <= paddleBottom &&
-        ball.x >= paddleLeft &&
-        ball.x <= paddleRight &&
-        ball.velocityY > 0;
+        if (side === 'vertical') {
+            // Hit top or bottom of paddle
+            ball.velocityY = -Math.abs(ball.velocityY);
+            ball.y = paddle.y - ball.radius;
 
-    if (hitPaddle) {
-        ball.y = paddleTop - ball.radius;
-        ball.velocityY = -Math.abs(ball.velocityY);
-
-        // Make the angle depend on where the ball hits the paddle
-        const relativeHit = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
-        ball.velocityX = relativeHit * 7;
+            // Make the angle depend on where the ball hits the paddle
+            const relativeHit = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+            ball.velocityX = relativeHit * 7;
+        } else {
+            // Hit left or right of paddle
+            ball.velocityX = -ball.velocityX;
+        }
     }
 }
 
@@ -190,62 +209,53 @@ function handleBlockCollisions() {
     for (const block of blocks) {
         if (!block.alive) continue;
 
-        const insideX = ball.x + ball.radius > block.x && ball.x - ball.radius < block.x + block.width;
-        const insideY = ball.y + ball.radius > block.y && ball.y - ball.radius < block.y + block.height;
+        if (circleRectCollision(ball, block)) {
+            block.alive = false;
+            const side = getCollisionSide(ball, block);
 
-        if (!insideX || !insideY) continue;
+            if (side === 'vertical') {
+                ball.velocityY = -ball.velocityY;
+            } else {
+                ball.velocityX = -ball.velocityX;
+            }
 
-        block.alive = false;
-
-        const overlapLeft = (ball.x + ball.radius) - block.x;
-        const overlapRight = (block.x + block.width) - (ball.x - ball.radius);
-        const overlapTop = (ball.y + ball.radius) - block.y;
-        const overlapBottom = (block.y + block.height) - (ball.y - ball.radius);
-
-        const smallestOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
-
-        if (smallestOverlap === overlapLeft || smallestOverlap === overlapRight) {
-            ball.velocityX *= -1;
-        } else {
-            ball.velocityY *= -1;
+            break; // Only collide with one block per frame
         }
-
-        break;
     }
 }
 
 function updateBall() {
+    // Move the ball
     ball.x += ball.velocityX;
     ball.y += ball.velocityY;
 
+    // Bounce off all four walls
+    // Top wall
     if (ball.y - ball.radius < arena.y) {
         ball.y = arena.y + ball.radius;
         ball.velocityY = -ball.velocityY;
     }
 
+    // Bottom wall
     if (ball.y + ball.radius > arena.height) {
-        handlePaddleCollision();
-
-        if (ball.y + ball.radius > arena.height) {
-            resetBall();
-        }
+        ball.y = arena.height - ball.radius;
+        ball.velocityY = -ball.velocityY;
     }
 
+    // Left wall
     if (ball.x - ball.radius < arena.x) {
         ball.x = arena.x + ball.radius;
         ball.velocityX = -ball.velocityX;
     }
 
+    // Right wall
     if (ball.x + ball.radius > arena.width) {
         ball.x = arena.width - ball.radius;
         ball.velocityX = -ball.velocityX;
     }
 
-    if (ball.y - ball.radius < arena.y) {
-        ball.y = arena.y + ball.radius;
-        ball.velocityY = -ball.velocityY;
-    }
-
+    // Check collisions
+    handlePaddleCollision();
     handleBlockCollisions();
 }
 
